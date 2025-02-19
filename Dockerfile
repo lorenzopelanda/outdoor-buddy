@@ -8,3 +8,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 CMD ["python", "bot.py"]
+CMD ["bash", "-c", "while true; do python3 bot.py; sleep 60; done"]
