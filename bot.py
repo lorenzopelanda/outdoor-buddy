@@ -50,7 +50,7 @@ def kill_existing_process():
             try:
                 process = psutil.Process(old_pid)
                 process.terminate()
-                process.wait(timeout=5)  # Wait up to 5 seconds for the process to terminate
+                process.wait(timeout=5)
                 logger.info(f"Terminated old process with PID {old_pid}")
             except psutil.NoSuchProcess:
                 logger.info(f"No process found with PID {old_pid}")
@@ -149,12 +149,21 @@ def signal_handler(signum, frame):
     sys.exit(0)
 
 
-async def delete_webhook_and_wait():
-    """Delete webhook and wait to ensure it's properly removed"""
-    bot = Bot(TOKEN)
-    await bot.delete_webhook(drop_pending_updates=True)
-    await asyncio.sleep(2)
-    await bot.close()
+async def setup_bot() -> Application:
+    """Setup and configure the bot application"""
+    # Create the Application
+    application = Application.builder().token(TOKEN).build()
+
+    # Add error handler
+    application.add_error_handler(error_handler)
+
+    # Add handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("weather", weather))
+    application.add_handler(CommandHandler("stop", stop))
+    application.add_handler(MessageHandler(filters.LOCATION, position))
+
+    return application
 
 
 async def main() -> None:
@@ -172,29 +181,19 @@ async def main() -> None:
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
-        # Delete any existing webhook and wait
-        await delete_webhook_and_wait()
+        # Delete webhook
+        bot = Bot(TOKEN)
+        await bot.delete_webhook(drop_pending_updates=True)
+        await bot.close()
 
-        # Create the Application
-        application = Application.builder().token(TOKEN).build()
-
-        # Add error handler
-        application.add_error_handler(error_handler)
-
-        # Add handlers
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("weather", weather))
-        application.add_handler(CommandHandler("stop", stop))
-        application.add_handler(MessageHandler(filters.LOCATION, position))
-
-        # Start the bot
+        # Setup and start the bot
         logger.info("Bot starting...")
-        await application.initialize()
-        await application.start()
+        application = await setup_bot()
+
+        # Start polling
         await application.run_polling(
             drop_pending_updates=True,
-            allowed_updates=Update.ALL_TYPES,
-            close_loop=False
+            allowed_updates=Update.ALL_TYPES
         )
 
     except Exception as e:
