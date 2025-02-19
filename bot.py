@@ -84,14 +84,19 @@ async def stop(update: Update, context: CallbackContext) -> None:
     await context.application.stop()
 
 def main():
-    app = Application.builder().token(TOKEN).build()
+    try:
+        app = Application.builder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("weather", weather))
-    app.add_handler(CommandHandler("stop", stop))
-    app.add_handler(MessageHandler(filters.LOCATION, position))
-    print("Bot running...")
-    app.run_polling()
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(CommandHandler("weather", weather))
+        app.add_handler(CommandHandler("stop", stop))
+        app.add_handler(MessageHandler(filters.LOCATION, position))
+
+        print("Bot in esecuzione...")
+        app.run_polling()
+
+    except Exception as e:
+        print(f"Errore: {e}")
 
 
 if __name__ == "__main__":
