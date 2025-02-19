@@ -89,25 +89,28 @@ async def stop(update: Update, context: CallbackContext) -> None:
 
 async def main():
     try:
-
-        await delete_webhook()
+        await delete_webhook()  # Rimuovi il webhook se è presente
         app = Application.builder().token(TOKEN).build()
 
-        await app.initialize()
+        # Inizializza l'applicazione
+        await app.initialize()  # Assicurati che questa riga sia "attesa"
+
         app.add_handler(CommandHandler("start", start))
         app.add_handler(CommandHandler("weather", weather))
         app.add_handler(CommandHandler("stop", stop))
         app.add_handler(MessageHandler(filters.LOCATION, position))
 
         print("Bot in esecuzione...")
-        await app.run_polling()
+        await app.run_polling()  # Usa await per eseguire correttamente il polling
 
     except Exception as e:
         print(f"Errore: {e}")
 
     finally:
         # Chiudi l'applicazione correttamente
-        await app.shutdown()
+        await app.shutdown()  # Assicurati che questa riga sia "attesa"
+
+# Esegui la funzione main() asincrona
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main())
+    asyncio.run(main())  # Avvia la funzione main() asinc
