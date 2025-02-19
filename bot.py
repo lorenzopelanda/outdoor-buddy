@@ -1,4 +1,4 @@
-from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
+from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 import requests
 from geopy.geocoders import Nominatim
@@ -14,6 +14,10 @@ API_KEY = os.getenv("API_KEY")
 if not TOKEN or not API_KEY:
     print("Errore: variabili d'ambiente mancanti.")
     exit(1)
+
+async def delete_webhook():
+    bot = Bot(TOKEN)
+    await bot.delete_webhook()
 
 async def start(update: Update, context: CallbackContext) -> None:
     """Show the welcome message and the available commands"""
@@ -83,12 +87,10 @@ async def stop(update: Update, context: CallbackContext) -> None:
     await update.message.reply_text("🛑 Bot is stopping...")
     await context.application.stop()
 
-def main():
+async def main():
     try:
-        from telegram import Bot
-        bot = Bot(TOKEN)
-        bot.delete_webhook()
 
+        await delete_webhook()
         app = Application.builder().token(TOKEN).build()
 
         app.add_handler(CommandHandler("start", start))
@@ -97,11 +99,12 @@ def main():
         app.add_handler(MessageHandler(filters.LOCATION, position))
 
         print("Bot in esecuzione...")
-        app.run_polling()
+        await app.run_polling()
 
     except Exception as e:
         print(f"Errore: {e}")
 
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
