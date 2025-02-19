@@ -5,7 +5,15 @@ from geopy.geocoders import Nominatim
 
 
 URL = "http://api.weatherapi.com/v1"
+import os
 
+# Ottieni le variabili d'ambiente
+TOKEN = os.getenv("TOKEN")
+API_KEY = os.getenv("API_KEY")
+
+if not TOKEN or not API_KEY:
+    print("Errore: variabili d'ambiente mancanti.")
+    exit(1)
 
 async def start(update: Update, context: CallbackContext) -> None:
     """Show the welcome message and the available commands"""
