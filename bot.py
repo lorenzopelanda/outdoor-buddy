@@ -93,6 +93,7 @@ async def main():
         await delete_webhook()
         app = Application.builder().token(TOKEN).build()
 
+        await app.initialize()
         app.add_handler(CommandHandler("start", start))
         app.add_handler(CommandHandler("weather", weather))
         app.add_handler(CommandHandler("stop", stop))
@@ -104,7 +105,9 @@ async def main():
     except Exception as e:
         print(f"Errore: {e}")
 
-
+    finally:
+        # Chiudi l'applicazione correttamente
+        await app.shutdown()
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
