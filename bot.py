@@ -1,79 +1,13 @@
-from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, Bot
+from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from telegram.error import Conflict, NetworkError, TelegramError
 import requests
 import os
-import logging
-import signal
-import sys
-import asyncio
-import time
-import atexit
-import psutil
-
-# Set up logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-
-logger = logging.getLogger(__name__)
-
+from geopy.geocoders import Nominatim
 URL = "http://api.weatherapi.com/v1"
-PID_FILE = "/tmp/weather_bot.pid"
 
 # Get environment variables
 TOKEN = os.getenv("TOKEN")
 API_KEY = os.getenv("API_KEY")
-
-if not TOKEN or not API_KEY:
-    logger.error("Error: missing environment variables.")
-    exit(1)
-
-
-def cleanup_pid():
-    """Remove PID file if it exists"""
-    try:
-        if os.path.exists(PID_FILE):
-            os.remove(PID_FILE)
-            logger.info("PID file removed")
-    except Exception as e:
-        logger.error(f"Error removing PID file: {e}")
-
-
-def kill_existing_process():
-    """Kill any existing bot process"""
-    try:
-        if os.path.exists(PID_FILE):
-            with open(PID_FILE, 'r') as f:
-                old_pid = int(f.read().strip())
-            try:
-                process = psutil.Process(old_pid)
-                process.terminate()
-                process.wait(timeout=5)
-                logger.info(f"Terminated old process with PID {old_pid}")
-            except psutil.NoSuchProcess:
-                logger.info(f"No process found with PID {old_pid}")
-            except Exception as e:
-                logger.error(f"Error terminating process: {e}")
-            finally:
-                cleanup_pid()
-    except Exception as e:
-        logger.error(f"Error reading PID file: {e}")
-        cleanup_pid()
-
-
-async def error_handler(update: object, context: CallbackContext) -> None:
-    """Handle errors caused by updates."""
-    logger.error(f"Error caused by update {update}: {context.error}")
-
-    if isinstance(context.error, Conflict):
-        logger.info("Conflict detected, attempting to resolve...")
-        kill_existing_process()
-        await asyncio.sleep(2)
-    elif isinstance(context.error, NetworkError):
-        logger.info("Network error detected, waiting before retry...")
-        await asyncio.sleep(5)
 
 
 async def start(update: Update, context: CallbackContext) -> None:
@@ -81,11 +15,8 @@ async def start(update: Update, context: CallbackContext) -> None:
     keyboard = [[KeyboardButton("📍 Send current position", request_location=True)]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
 
-    await update.message.reply_text(
-        "Hi! Welcome to OutdoorBuddyBot\nUse:\n/weather [Municipality] -> to have the current weather.\n/stop -> to pause the Bot.",
-        reply_markup=reply_markup
-    )
-
+    await update.message.reply_text("Hi! Welcome to OutdoorBuddyBot\nUse:\n/weather [Municipality] -> to have the current weather.\n/stop -> to pause the Bot.",
+                                    reply_markup=reply_markup)
 
 async def weather(update: Update, context: CallbackContext) -> None:
     """Gets the weather for the specified city"""
@@ -94,21 +25,19 @@ async def weather(update: Update, context: CallbackContext) -> None:
         return
 
     city = " ".join(context.args)
+
+    # Call the WeatherAPI with the city name
     params = {"key": API_KEY, "q": city, "lang": "en"}
+    response = requests.get(f"{URL}/current.json", params=params)
 
-    try:
-        response = requests.get(f"{URL}/current.json", params=params)
-        response.raise_for_status()
-
+    if response.status_code == 200:
         data = response.json()
         city_name = data["location"]["name"]
         temp = data["current"]["temp_c"]
         description = data["current"]["condition"]["text"]
         await update.message.reply_text(f"📍 {city_name}\n🌡 Temperature: {temp}°C\n🌤 {description}")
-    except Exception as e:
-        logger.error(f"Error fetching weather data: {e}")
-        await update.message.reply_text("❌ Municipality not found or error fetching data.")
-
+    else:
+        await update.message.reply_text("❌ Municipality not found.")
 
 async def position(update: Update, context: CallbackContext) -> None:
     """Gets the weather for the current position"""
@@ -116,98 +45,49 @@ async def position(update: Update, context: CallbackContext) -> None:
         lat = update.message.location.latitude
         lon = update.message.location.longitude
 
-        logger.info(f"📍 Coordinates received: Lat {lat}, Lon {lon}")
+        print(f"📍 Coordinates received: Lat {lat}, Lon {lon}")  # DEBUG
 
+        # Call the WeatherAPI with the coordinates
         params = {"key": API_KEY, "q": f"{lat},{lon}", "lang": "en"}
-        try:
-            response = requests.get(f"{URL}/current.json", params=params)
-            response.raise_for_status()
+        response = requests.get(f"{URL}/current.json", params=params)
 
+        if response.status_code == 200:
             data = response.json()
             city = data["location"]["name"]
             temp = data["current"]["temp_c"]
             description = data["current"]["condition"]["text"]
             await update.message.reply_text(f"📍 {city}\n🌡 Temperature: {temp}°C\n🌤 {description}")
-        except Exception as e:
-            logger.error(f"Error fetching weather data: {e}")
+        else:
             await update.message.reply_text("❌ Error fetching the weather info.")
 
+async def send_weather(update: Update, city: str) -> None:
+    """Ottiene e invia il meteo per la città specificata"""
+    params = {"q": city, "appid": API_KEY, "units": "metric", "lang": "en"}
+    response = requests.get(URL, params=params)
+
+    if response.status_code == 200:
+        data = response.json()
+        temp = data["main"]["temp"]
+        description = data["weather"][0]["description"]
+        await update.message.reply_text(f"📍 {city}\n🌡 Temperature: {temp}°C\n🌤 {description}")
+    else:
+        await update.message.reply_text("❌ Municipality not found.")
 
 async def stop(update: Update, context: CallbackContext) -> None:
-    """Stops the bot"""
-    logger.info("Stopping the bot...")
+    """Ferma il bot"""
     await update.message.reply_text("🛑 Bot is stopping...")
-    cleanup_pid()
     await context.application.stop()
-    sys.exit(0)
 
+def main():
+    app = Application.builder().token(TOKEN).build()
 
-def signal_handler(signum, frame):
-    """Handle shutdown signals"""
-    logger.info(f"Received signal {signum}")
-    cleanup_pid()
-    sys.exit(0)
-
-
-async def setup_bot() -> Application:
-    """Setup and configure the bot application"""
-    # Create the Application
-    application = Application.builder().token(TOKEN).build()
-
-    # Add error handler
-    application.add_error_handler(error_handler)
-
-    # Add handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("weather", weather))
-    application.add_handler(CommandHandler("stop", stop))
-    application.add_handler(MessageHandler(filters.LOCATION, position))
-
-    return application
-
-
-async def main() -> None:
-    """Start the bot."""
-    try:
-        # Kill any existing process and clean up
-        kill_existing_process()
-
-        # Save current PID
-        with open(PID_FILE, 'w') as f:
-            f.write(str(os.getpid()))
-
-        # Register cleanup handlers
-        atexit.register(cleanup_pid)
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
-
-        # Delete webhook
-        bot = Bot(TOKEN)
-        await bot.delete_webhook(drop_pending_updates=True)
-        await bot.close()
-
-        # Setup and start the bot
-        logger.info("Bot starting...")
-        application = await setup_bot()
-
-        # Start polling
-        await application.run_polling(
-            drop_pending_updates=True,
-            allowed_updates=Update.ALL_TYPES
-        )
-
-    except Exception as e:
-        logger.error(f"Error in main: {e}")
-        cleanup_pid()
-        sys.exit(1)
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("weather", weather))
+    app.add_handler(CommandHandler("stop", stop))
+    app.add_handler(MessageHandler(filters.LOCATION, position))
+    print("Bot running...")
+    app.run_polling()
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Bot stopped by user")
-        cleanup_pid()
-    except Exception as e:
-        logger.error(f"Fatal error: {e}")
-        cleanup_pid()
+    main()
