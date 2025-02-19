@@ -1,11 +1,11 @@
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 import requests
-from geopy.geocoders import Nominatim
-import asyncio
 import os
 import logging
 import signal
+import sys
+import atexit
 
 # Set up logging
 logging.basicConfig(
@@ -16,6 +16,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 URL = "http://api.weatherapi.com/v1"
+LOCK_FILE = "/tmp/telegram_bot.lock"
 
 # Get environment variables
 TOKEN = os.getenv("TOKEN")
@@ -25,8 +26,44 @@ if not TOKEN or not API_KEY:
     logger.error("Error: missing environment variables.")
     exit(1)
 
-# Global application variable
-application = None
+
+def check_single_instance():
+    """Ensure only one instance of the bot is running"""
+    if os.path.exists(LOCK_FILE):
+        try:
+            # Check if the process is still running
+            with open(LOCK_FILE, 'r') as f:
+                old_pid = int(f.read().strip())
+            try:
+                # Check if process with old PID exists
+                os.kill(old_pid, 0)
+                logger.error(f"Bot is already running with PID {old_pid}")
+                sys.exit(1)
+            except OSError:
+                # Process not found, safe to remove lock file
+                logger.info("Removing stale lock file")
+                os.remove(LOCK_FILE)
+        except (ValueError, IOError) as e:
+            logger.error(f"Error reading lock file: {e}")
+            os.remove(LOCK_FILE)
+
+    # Create new lock file
+    try:
+        with open(LOCK_FILE, 'w') as f:
+            f.write(str(os.getpid()))
+    except IOError as e:
+        logger.error(f"Could not create lock file: {e}")
+        sys.exit(1)
+
+
+def cleanup():
+    """Remove the lock file on exit"""
+    try:
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+            logger.info("Lock file removed")
+    except Exception as e:
+        logger.error(f"Error removing lock file: {e}")
 
 
 async def start(update: Update, context: CallbackContext) -> None:
@@ -88,49 +125,46 @@ async def position(update: Update, context: CallbackContext) -> None:
 
 async def stop(update: Update, context: CallbackContext) -> None:
     """Stops the bot"""
-    global application
     logger.info("Stopping the bot...")
     await update.message.reply_text("🛑 Bot is stopping...")
-
-    # Schedule the shutdown
-    asyncio.create_task(shutdown())
-
-
-async def shutdown():
-    """Shutdown the application"""
-    global application
-    if application:
-        await application.stop()
-        await application.shutdown()
-        logger.info("Bot has been stopped.")
+    await context.application.stop()
 
 
 def signal_handler(signum, frame):
     """Handle shutdown signals"""
     logger.info(f"Received signal {signum}")
-    asyncio.create_task(shutdown())
+    cleanup()
+    sys.exit(0)
 
 
 def main() -> None:
     """Start the bot."""
-    global application
+    try:
+        # Ensure single instance
+        check_single_instance()
 
-    # Set up signal handlers
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+        # Register cleanup handlers
+        atexit.register(cleanup)
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
 
-    # Create the Application
-    application = Application.builder().token(TOKEN).build()
+        # Create the Application
+        application = Application.builder().token(TOKEN).build()
 
-    # Add handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("weather", weather))
-    application.add_handler(CommandHandler("stop", stop))
-    application.add_handler(MessageHandler(filters.LOCATION, position))
+        # Add handlers
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("weather", weather))
+        application.add_handler(CommandHandler("stop", stop))
+        application.add_handler(MessageHandler(filters.LOCATION, position))
 
-    # Start the bot
-    logger.info("Bot starting...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+        # Start the bot
+        logger.info("Bot starting...")
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+    except Exception as e:
+        logger.error(f"Error in main: {e}")
+        cleanup()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
