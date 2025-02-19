@@ -85,6 +85,10 @@ async def stop(update: Update, context: CallbackContext) -> None:
 
 def main():
     try:
+        from telegram import Bot
+        bot = Bot(TOKEN)
+        bot.delete_webhook()
+
         app = Application.builder().token(TOKEN).build()
 
         app.add_handler(CommandHandler("start", start))
