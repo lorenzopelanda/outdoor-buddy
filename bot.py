@@ -1,6 +1,7 @@
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 import requests
+import asyncio
 from geopy.geocoders import Nominatim
 
 
@@ -83,35 +84,26 @@ async def send_weather(update: Update, city: str) -> None:
         await update.message.reply_text("❌ Municipality not found.")
 
 async def stop(update: Update, context: CallbackContext) -> None:
-    """Ferma il bot"""
+    """Stops the bot"""
     await update.message.reply_text("🛑 Bot is stopping...")
-    await context.application.stop()
+    await context.application.shutdown()
+
 
 async def main():
-    try:
-        await delete_webhook()  # Rimuovi il webhook se è presente
-        app = Application.builder().token(TOKEN).build()
 
-        # Inizializza l'applicazione
-        await app.initialize()  # Assicurati che questa riga sia "attesa"
+    app = Application.builder().token(TOKEN).build()
 
-        app.add_handler(CommandHandler("start", start))
-        app.add_handler(CommandHandler("weather", weather))
-        app.add_handler(CommandHandler("stop", stop))
-        app.add_handler(MessageHandler(filters.LOCATION, position))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("weather", weather))
+    app.add_handler(CommandHandler("stop", stop))
+    app.add_handler(MessageHandler(filters.LOCATION, position))
 
-        print("Bot in esecuzione...")
-        await app.run_polling()  # Usa await per eseguire correttamente il polling
+    await delete_webhook()  # Rimuovi il webhook se è presente
+    print("Bot in esecuzione...")
+    await app.run_polling()  # Usa await per eseguire correttamente il polling
 
-    except Exception as e:
-        print(f"Errore: {e}")
-
-    finally:
-        # Chiudi l'applicazione correttamente
-        await app.shutdown()  # Assicurati che questa riga sia "attesa"
 
 # Avvia la funzione main() direttamente, senza usare asyncio.run
 if __name__ == "__main__":
-    import asyncio
-    loop = asyncio.get_event_loop()  # Usa il loop di eventi già attivo
-    loop.run_until_complete(main())
+
+    asyncio.run(main())
