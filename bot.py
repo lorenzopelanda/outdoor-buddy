@@ -1,11 +1,15 @@
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+from telegram.error import Conflict, NetworkError, TelegramError
 import requests
 import os
 import logging
 import signal
 import sys
+import asyncio
+import time
 import atexit
+import psutil
 
 # Set up logging
 logging.basicConfig(
@@ -16,7 +20,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 URL = "http://api.weatherapi.com/v1"
-LOCK_FILE = "/tmp/telegram_bot.lock"
+PID_FILE = "/tmp/weather_bot.pid"
 
 # Get environment variables
 TOKEN = os.getenv("TOKEN")
@@ -27,43 +31,49 @@ if not TOKEN or not API_KEY:
     exit(1)
 
 
-def check_single_instance():
-    """Ensure only one instance of the bot is running"""
-    if os.path.exists(LOCK_FILE):
-        try:
-            # Check if the process is still running
-            with open(LOCK_FILE, 'r') as f:
+def cleanup_pid():
+    """Remove PID file if it exists"""
+    try:
+        if os.path.exists(PID_FILE):
+            os.remove(PID_FILE)
+            logger.info("PID file removed")
+    except Exception as e:
+        logger.error(f"Error removing PID file: {e}")
+
+
+def kill_existing_process():
+    """Kill any existing bot process"""
+    try:
+        if os.path.exists(PID_FILE):
+            with open(PID_FILE, 'r') as f:
                 old_pid = int(f.read().strip())
             try:
-                # Check if process with old PID exists
-                os.kill(old_pid, 0)
-                logger.error(f"Bot is already running with PID {old_pid}")
-                sys.exit(1)
-            except OSError:
-                # Process not found, safe to remove lock file
-                logger.info("Removing stale lock file")
-                os.remove(LOCK_FILE)
-        except (ValueError, IOError) as e:
-            logger.error(f"Error reading lock file: {e}")
-            os.remove(LOCK_FILE)
-
-    # Create new lock file
-    try:
-        with open(LOCK_FILE, 'w') as f:
-            f.write(str(os.getpid()))
-    except IOError as e:
-        logger.error(f"Could not create lock file: {e}")
-        sys.exit(1)
-
-
-def cleanup():
-    """Remove the lock file on exit"""
-    try:
-        if os.path.exists(LOCK_FILE):
-            os.remove(LOCK_FILE)
-            logger.info("Lock file removed")
+                process = psutil.Process(old_pid)
+                process.terminate()
+                process.wait(timeout=5)  # Wait up to 5 seconds for the process to terminate
+                logger.info(f"Terminated old process with PID {old_pid}")
+            except psutil.NoSuchProcess:
+                logger.info(f"No process found with PID {old_pid}")
+            except Exception as e:
+                logger.error(f"Error terminating process: {e}")
+            finally:
+                cleanup_pid()
     except Exception as e:
-        logger.error(f"Error removing lock file: {e}")
+        logger.error(f"Error reading PID file: {e}")
+        cleanup_pid()
+
+
+async def error_handler(update: object, context: CallbackContext) -> None:
+    """Handle errors caused by updates."""
+    logger.error(f"Error caused by update {update}: {context.error}")
+
+    if isinstance(context.error, Conflict):
+        logger.info("Conflict detected, attempting to resolve...")
+        kill_existing_process()
+        await asyncio.sleep(2)
+    elif isinstance(context.error, NetworkError):
+        logger.info("Network error detected, waiting before retry...")
+        await asyncio.sleep(5)
 
 
 async def start(update: Update, context: CallbackContext) -> None:
@@ -127,29 +137,49 @@ async def stop(update: Update, context: CallbackContext) -> None:
     """Stops the bot"""
     logger.info("Stopping the bot...")
     await update.message.reply_text("🛑 Bot is stopping...")
+    cleanup_pid()
     await context.application.stop()
+    sys.exit(0)
 
 
 def signal_handler(signum, frame):
     """Handle shutdown signals"""
     logger.info(f"Received signal {signum}")
-    cleanup()
+    cleanup_pid()
     sys.exit(0)
 
 
-def main() -> None:
+async def delete_webhook_and_wait():
+    """Delete webhook and wait to ensure it's properly removed"""
+    bot = Bot(TOKEN)
+    await bot.delete_webhook(drop_pending_updates=True)
+    await asyncio.sleep(2)
+    await bot.close()
+
+
+async def main() -> None:
     """Start the bot."""
     try:
-        # Ensure single instance
-        check_single_instance()
+        # Kill any existing process and clean up
+        kill_existing_process()
+
+        # Save current PID
+        with open(PID_FILE, 'w') as f:
+            f.write(str(os.getpid()))
 
         # Register cleanup handlers
-        atexit.register(cleanup)
+        atexit.register(cleanup_pid)
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
+        # Delete any existing webhook and wait
+        await delete_webhook_and_wait()
+
         # Create the Application
         application = Application.builder().token(TOKEN).build()
+
+        # Add error handler
+        application.add_error_handler(error_handler)
 
         # Add handlers
         application.add_handler(CommandHandler("start", start))
@@ -159,13 +189,26 @@ def main() -> None:
 
         # Start the bot
         logger.info("Bot starting...")
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        await application.initialize()
+        await application.start()
+        await application.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES,
+            close_loop=False
+        )
 
     except Exception as e:
         logger.error(f"Error in main: {e}")
-        cleanup()
+        cleanup_pid()
         sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
+        cleanup_pid()
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+        cleanup_pid()
