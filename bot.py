@@ -5,12 +5,15 @@ from geopy.geocoders import Nominatim
 import asyncio
 import os
 import logging
+import signal
 
 # Set up logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+
+logger = logging.getLogger(__name__)
 
 URL = "http://api.weatherapi.com/v1"
 
@@ -19,8 +22,11 @@ TOKEN = os.getenv("TOKEN")
 API_KEY = os.getenv("API_KEY")
 
 if not TOKEN or not API_KEY:
-    print("Error: missing environment variables.")
+    logger.error("Error: missing environment variables.")
     exit(1)
+
+# Global application variable
+application = None
 
 
 async def start(update: Update, context: CallbackContext) -> None:
@@ -42,16 +48,19 @@ async def weather(update: Update, context: CallbackContext) -> None:
 
     city = " ".join(context.args)
     params = {"key": API_KEY, "q": city, "lang": "en"}
-    response = requests.get(f"{URL}/current.json", params=params)
 
-    if response.status_code == 200:
+    try:
+        response = requests.get(f"{URL}/current.json", params=params)
+        response.raise_for_status()
+
         data = response.json()
         city_name = data["location"]["name"]
         temp = data["current"]["temp_c"]
         description = data["current"]["condition"]["text"]
         await update.message.reply_text(f"📍 {city_name}\n🌡 Temperature: {temp}°C\n🌤 {description}")
-    else:
-        await update.message.reply_text("❌ Municipality not found.")
+    except Exception as e:
+        logger.error(f"Error fetching weather data: {e}")
+        await update.message.reply_text("❌ Municipality not found or error fetching data.")
 
 
 async def position(update: Update, context: CallbackContext) -> None:
@@ -60,41 +69,68 @@ async def position(update: Update, context: CallbackContext) -> None:
         lat = update.message.location.latitude
         lon = update.message.location.longitude
 
-        logging.info(f"📍 Coordinates received: Lat {lat}, Lon {lon}")
+        logger.info(f"📍 Coordinates received: Lat {lat}, Lon {lon}")
 
         params = {"key": API_KEY, "q": f"{lat},{lon}", "lang": "en"}
-        response = requests.get(f"{URL}/current.json", params=params)
+        try:
+            response = requests.get(f"{URL}/current.json", params=params)
+            response.raise_for_status()
 
-        if response.status_code == 200:
             data = response.json()
             city = data["location"]["name"]
             temp = data["current"]["temp_c"]
             description = data["current"]["condition"]["text"]
             await update.message.reply_text(f"📍 {city}\n🌡 Temperature: {temp}°C\n🌤 {description}")
-        else:
+        except Exception as e:
+            logger.error(f"Error fetching weather data: {e}")
             await update.message.reply_text("❌ Error fetching the weather info.")
 
 
 async def stop(update: Update, context: CallbackContext) -> None:
     """Stops the bot"""
+    global application
+    logger.info("Stopping the bot...")
     await update.message.reply_text("🛑 Bot is stopping...")
-    await context.application.stop()
+
+    # Schedule the shutdown
+    asyncio.create_task(shutdown())
+
+
+async def shutdown():
+    """Shutdown the application"""
+    global application
+    if application:
+        await application.stop()
+        await application.shutdown()
+        logger.info("Bot has been stopped.")
+
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals"""
+    logger.info(f"Received signal {signum}")
+    asyncio.create_task(shutdown())
 
 
 def main() -> None:
     """Start the bot."""
+    global application
+
+    # Set up signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
     # Create the Application
-    app = Application.builder().token(TOKEN).build()
+    application = Application.builder().token(TOKEN).build()
 
     # Add handlers
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("weather", weather))
-    app.add_handler(CommandHandler("stop", stop))
-    app.add_handler(MessageHandler(filters.LOCATION, position))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("weather", weather))
+    application.add_handler(CommandHandler("stop", stop))
+    application.add_handler(MessageHandler(filters.LOCATION, position))
 
     # Start the bot
-    print("Bot running...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    logger.info("Bot starting...")
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
