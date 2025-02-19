@@ -110,7 +110,8 @@ async def main():
         # Chiudi l'applicazione correttamente
         await app.shutdown()  # Assicurati che questa riga sia "attesa"
 
-# Esegui la funzione main() asincrona
+# Avvia la funzione main() direttamente, senza usare asyncio.run
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main())  # Avvia la funzione main() asinc
+    loop = asyncio.get_event_loop()  # Usa il loop di eventi già attivo
+    loop.run_until_complete(main())
