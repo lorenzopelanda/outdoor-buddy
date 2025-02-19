@@ -1,32 +1,38 @@
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 import requests
-import asyncio
 from geopy.geocoders import Nominatim
+import asyncio
+import os
+import logging
 
+# Set up logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
 URL = "http://api.weatherapi.com/v1"
-import os
 
-# Ottieni le variabili d'ambiente
+# Get environment variables
 TOKEN = os.getenv("TOKEN")
 API_KEY = os.getenv("API_KEY")
 
 if not TOKEN or not API_KEY:
-    print("Errore: variabili d'ambiente mancanti.")
+    print("Error: missing environment variables.")
     exit(1)
 
-async def delete_webhook():
-    bot = Bot(TOKEN)
-    await bot.delete_webhook()
 
 async def start(update: Update, context: CallbackContext) -> None:
     """Show the welcome message and the available commands"""
     keyboard = [[KeyboardButton("📍 Send current position", request_location=True)]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
 
-    await update.message.reply_text("Hi! Welcome to OutdoorBuddyBot\nUse:\n/weather [Municipality] -> to have the current weather.\n/stop -> to pause the Bot.",
-                                    reply_markup=reply_markup)
+    await update.message.reply_text(
+        "Hi! Welcome to OutdoorBuddyBot\nUse:\n/weather [Municipality] -> to have the current weather.\n/stop -> to pause the Bot.",
+        reply_markup=reply_markup
+    )
+
 
 async def weather(update: Update, context: CallbackContext) -> None:
     """Gets the weather for the specified city"""
@@ -35,8 +41,6 @@ async def weather(update: Update, context: CallbackContext) -> None:
         return
 
     city = " ".join(context.args)
-
-    # Call the WeatherAPI with the city name
     params = {"key": API_KEY, "q": city, "lang": "en"}
     response = requests.get(f"{URL}/current.json", params=params)
 
@@ -49,15 +53,15 @@ async def weather(update: Update, context: CallbackContext) -> None:
     else:
         await update.message.reply_text("❌ Municipality not found.")
 
+
 async def position(update: Update, context: CallbackContext) -> None:
     """Gets the weather for the current position"""
     if update.message.location:
         lat = update.message.location.latitude
         lon = update.message.location.longitude
 
-        print(f"📍 Coordinates received: Lat {lat}, Lon {lon}")  # DEBUG
+        logging.info(f"📍 Coordinates received: Lat {lat}, Lon {lon}")
 
-        # Call the WeatherAPI with the coordinates
         params = {"key": API_KEY, "q": f"{lat},{lon}", "lang": "en"}
         response = requests.get(f"{URL}/current.json", params=params)
 
@@ -70,40 +74,28 @@ async def position(update: Update, context: CallbackContext) -> None:
         else:
             await update.message.reply_text("❌ Error fetching the weather info.")
 
-async def send_weather(update: Update, city: str) -> None:
-    """Ottiene e invia il meteo per la città specificata"""
-    params = {"q": city, "appid": API_KEY, "units": "metric", "lang": "en"}
-    response = requests.get(URL, params=params)
-
-    if response.status_code == 200:
-        data = response.json()
-        temp = data["main"]["temp"]
-        description = data["weather"][0]["description"]
-        await update.message.reply_text(f"📍 {city}\n🌡 Temperature: {temp}°C\n🌤 {description}")
-    else:
-        await update.message.reply_text("❌ Municipality not found.")
 
 async def stop(update: Update, context: CallbackContext) -> None:
     """Stops the bot"""
     await update.message.reply_text("🛑 Bot is stopping...")
-    await context.application.shutdown()
+    await context.application.stop()
 
 
-async def main():
-
+def main() -> None:
+    """Start the bot."""
+    # Create the Application
     app = Application.builder().token(TOKEN).build()
 
+    # Add handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("weather", weather))
     app.add_handler(CommandHandler("stop", stop))
     app.add_handler(MessageHandler(filters.LOCATION, position))
 
-    await delete_webhook()  # Rimuovi il webhook se è presente
-    print("Bot in esecuzione...")
-    await app.run_polling()  # Usa await per eseguire correttamente il polling
+    # Start the bot
+    print("Bot running...")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
-# Avvia la funzione main() direttamente, senza usare asyncio.run
 if __name__ == "__main__":
-
-    asyncio.run(main())
+    main()
