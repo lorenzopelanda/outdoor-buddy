@@ -1,50 +1,47 @@
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+from processing import utils
 import requests
 import os
 import signal
 import asyncio
 from datetime import datetime, timedelta
 import re
+import openai
+from dotenv import load_dotenv
+import json
 
 # URL and API key for the weather API
 URL = "http://api.weatherapi.com/v1"
 TOKEN = os.getenv("TOKEN")
 API_KEY = os.getenv("API_KEY")
 
+load_dotenv()
+openai.api_key = os.getenv("MISTRAL_API_KEY")
 is_paused = False
 app = None
 
-def escape_markdownv2(text):
-    """Escape special characters for MarkdownV2 format."""
-    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-    for char in special_chars:
-        text = text.replace(char, f'\\{char}')
-    return text
-
-async def start(update: Update, context: CallbackContext) -> None:
+def start(update: Update, context: CallbackContext) -> None:
     global is_paused
     if is_paused:
-        await update.message.reply_text("🛑 Bot is paused\\. Use /resume to continue\\.", parse_mode="MarkdownV2")
+        update.message.reply_text("🛑 Bot is paused. Use /resume to continue.")
     else:
         keyboard = [[KeyboardButton("📍 Send current position", request_location=True)]]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
 
-        await update.message.reply_text(
-            "Hi\\! Welcome to OutdoorBuddyBot\nUse:\n/weather \\[Municipality\\] \\-\\> to have the current weather\n/forecast \\[Municipality\\] \\-\\> to see next 4 days forecast"
-            "\n/history \\[Municipality\\] \\-\\> to see last 7 days temperatures\n/stop \\-\\> to pause the Bot\\.",
-            parse_mode="MarkdownV2",
+        update.message.reply_text(
+            "Hi! Welcome to OutdoorBuddyBot\nUse:\n/weather [Municipality] -> to have the current weather\n/forecast [Municipality] -> to see next 4 days forecast"
+            "\n/history [Municipality] -> to see last 7 days temperatures\n/stop -> to pause the Bot.",
             reply_markup=reply_markup)
 
-async def forecast(update: Update, context: CallbackContext) -> None:
-    """Gets the weather forecast for the next 4 days of the specified city."""
+def forecast(update: Update, context: CallbackContext) -> None:
     global is_paused
     if is_paused:
-        await update.message.reply_text("🛑 Bot is paused\\. Use /resume to continue\\.", parse_mode="MarkdownV2")
+        update.message.reply_text("🛑 Bot is paused. Use /resume to continue.")
         return
 
     if not context.args:
-        await update.message.reply_text("❌ Use:\n`/forecast \\[City name\\]`", parse_mode="MarkdownV2")
+        update.message.reply_text("❌ Use:\n/forecast [City name]")
         return
 
     city = " ".join(context.args)
@@ -53,31 +50,31 @@ async def forecast(update: Update, context: CallbackContext) -> None:
 
     if response.status_code == 200:
         data = response.json()
-        city_name = escape_markdownv2(data["location"]["name"])
+        city_name = data["location"]["name"]
         forecast_days = data["forecast"]["forecastday"]
 
         message = f"📍 {city_name}\n🗓 Next days forecast:\n\n"
         for day in forecast_days[1:]:  # Skip today
             date = datetime.strptime(day["date"], "%Y-%m-%d").strftime("%d/%m/%Y")
-            max_temp = str(day["day"]["maxtemp_c"]).replace(".", "\\.")
-            min_temp = str(day["day"]["mintemp_c"]).replace(".", "\\.")
-            condition = escape_markdownv2(day["day"]["condition"]["text"])
-            message += f"📅 *{date}*\n"
-            message += f"🌡 Temperature: {min_temp}°C \\- {max_temp}°C\n"
+            max_temp = day["day"]["maxtemp_c"]
+            min_temp = day["day"]["mintemp_c"]
+            condition = day["day"]["condition"]["text"]
+            message += f"📅 {date}\n"
+            message += f"🌡 Temperature: {min_temp}°C - {max_temp}°C\n"
             message += f"🌤 {condition}\n\n"
 
-        await update.message.reply_text(message, parse_mode="MarkdownV2")
+        update.message.reply_text(message)
     else:
-        await update.message.reply_text("❌ Municipality not found\\.", parse_mode="MarkdownV2")
+        update.message.reply_text("❌ Municipality not found.")
 
-async def weather(update: Update, context: CallbackContext) -> None:
+def weather(update: Update, context: CallbackContext) -> None:
     global is_paused
     if is_paused:
-        await update.message.reply_text("🛑 Bot is paused\\. Use /resume to continue\\.", parse_mode="MarkdownV2")
+        update.message.reply_text("🛑 Bot is paused. Use /resume to continue.")
         return
 
     if not context.args:
-        await update.message.reply_text("❌ Use:\n`/weather \\[City name\\]`", parse_mode="MarkdownV2")
+        update.message.reply_text("❌ Use:\n/weather [City name]")
         return
 
     city = " ".join(context.args)
@@ -86,30 +83,29 @@ async def weather(update: Update, context: CallbackContext) -> None:
 
     if response.status_code == 200:
         data = response.json()
-        city_name = escape_markdownv2(data["location"]["name"])
+        city_name = data["location"]["name"]
         temp = data["current"]["temp_c"]
-        description = escape_markdownv2(data["current"]["condition"]["text"])
-        await update.message.reply_text(
-            f"📍 {city_name}\n🌡 Temperature: {temp}°C\n🌤 {description}".replace(".", "\\."),
-            parse_mode="MarkdownV2"
+        description = data["current"]["condition"]["text"]
+        update.message.reply_text(
+            f"📍 {city_name}\n🌡 Temperature: {temp}°C\n🌤 {description}"
         )
     else:
-        await update.message.reply_text("❌ Municipality not found\\.", parse_mode="MarkdownV2")
+        update.message.reply_text("❌ Municipality not found.")
 
-async def stop(update: Update, context: CallbackContext) -> None:
+def stop(update: Update, context: CallbackContext) -> None:
     global is_paused
     is_paused = True
-    await update.message.reply_text("🛑 Bot is paused\\. Use /resume to continue\\.", parse_mode="MarkdownV2")
+    update.message.reply_text("🛑 Bot is paused. Use /resume to continue.")
 
-async def resume(update: Update, context: CallbackContext) -> None:
+def resume(update: Update, context: CallbackContext) -> None:
     global is_paused
     is_paused = False
-    await update.message.reply_text("▶️ Bot resumed\\.\nYou can now use commands again\\.", parse_mode="MarkdownV2")
+    update.message.reply_text("▶️ Bot resumed. You can now use commands again.")
 
-async def position(update: Update, context: CallbackContext) -> None:
+def position(update: Update, context: CallbackContext) -> None:
     global is_paused
     if is_paused:
-        await update.message.reply_text("🛑 Bot is paused\\. Use /resume to continue\\.", parse_mode="MarkdownV2")
+        update.message.reply_text("🛑 Bot is paused. Use /resume to continue.")
         return
 
     if update.message.location:
@@ -123,46 +119,76 @@ async def position(update: Update, context: CallbackContext) -> None:
 
         if response.status_code == 200:
             data = response.json()
-            city = escape_markdownv2(data["location"]["name"])
+            city = data["location"]["name"]
             temp = data["current"]["temp_c"]
-            description = escape_markdownv2(data["current"]["condition"]["text"])
-            await update.message.reply_text(
-                f"📍 {city}\n🌡 Temperature: {temp}°C\n🌤 {description}".replace(".", "\\."),
-                parse_mode="MarkdownV2"
+            description = data["current"]["condition"]["text"]
+            update.message.reply_text(
+                f"📍 {city}\n🌡 Temperature: {temp}°C\n🌤 {description}"
             )
         else:
-            await update.message.reply_text("❌ Error fetching the weather info\\.", parse_mode="MarkdownV2")
+            update.message.reply_text("❌ Error fetching the weather info.")
 
-async def history(update: Update, context: CallbackContext) -> None:
-    """Gets the daily average temperature for the last 7 days of the specified city."""
-    if not context.args:
-        await update.message.reply_text("❌ Use:\n`/history \\[City name\\]`", parse_mode="MarkdownV2")
+def parse_input_with_ai(message: str) -> dict:
+    """Usa AI per estrarre i parametri del percorso."""
+    prompt = (
+        "Estrarre i parametri principali e opzionali per pianificare un percorso ciclistico o di trekking dal seguente testo. "
+        "Restituire un JSON con address, distance, level, duration, terrain (obbligatori) e ascent (opzionale). "
+        "Ignorare dettagli non rilevanti.\n"
+        f"Testo: {message}\nOutput:"
+    )
+
+    response = openai.ChatCompletion.create(
+        model="mistral-7b-instruct",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2
+    )
+
+    return json.loads(response["choices"][0]["message"]["content"])
+
+
+def route(update: Update, context: CallbackContext) -> None:
+    """Gestisce il comando /route del bot Telegram."""
+    global is_paused
+    if is_paused:
+        update.message.reply_text("🛑 Bot is paused. Use /resume to continue.")
         return
 
-    city = " ".join(context.args)
-    temperatures = []
+    try:
+        user_input = update.message.text[len("/route "):]
+        params = parse_input_with_ai(user_input)
 
-    for i in range(1, 7):
-        date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-        params = {"key": API_KEY, "q": city, "dt": date, "lang": "en"}
-        response = requests.get(f"{URL}/history.json", params=params)
+        # Parametri obbligatori
+        address = params["address"]
+        distance = float(params["distance"])
+        level = params["level"].lower()
+        duration = float(params["duration"])
+        terrain = params["terrain"].lower()
 
-        if response.status_code == 200:
-            data = response.json()
-            temp = data["forecast"]["forecastday"][0]["day"]["avgtemp_c"]
-            temperatures.append((date, temp))
-        else:
-            await update.message.reply_text(f"❌ Error fetching data for {date}\\.", parse_mode="MarkdownV2")
+        if distance <= 0:
+            update.message.reply_text("❌ Distance must be greater than 0.")
             return
 
-    temperatures.sort(reverse=True, key=lambda x: x[0])
+        if duration <= 0:
+            update.message.reply_text("❌ Duration must be greater than 0.")
+            return
 
-    city = escape_markdownv2(city)
-    message = f"📍 {city}\n📅 Average daily temperatures \\(last 7 days\\):\n\n"
-    for date, temp in temperatures:
-        message += f"  • {date.replace('-', '\\-')}: {temp}°C\n".replace(".", "\\.")
+        if not re.match(r"principiante|intermedio|avanzato", level):
+            update.message.reply_text("❌ Level must be 'principiante', 'intermedio', or 'avanzato'.")
+            return
 
-    await update.message.reply_text(message, parse_mode="MarkdownV2")
+        if not re.match(r"sterrato|asfalto|misto", terrain):
+            update.message.reply_text("❌ Terrain must be 'sterrato', 'asfalto', or 'misto'.")
+            return
+
+        # Parametro opzionale
+        ascent = params.get("ascent", None)
+
+        # Passa tutto alla funzione di pianificazione
+        utils.plan_circular_route(address, distance, level, duration=duration, terrain=terrain, ascent=ascent)
+        update.message.reply_text("✅ Route successfully created. Check your email for the GPX file.")
+
+    except Exception as e:
+        update.message.reply_text(f"❌ Error: {e}")
 
 def main():
     global app
@@ -173,7 +199,7 @@ def main():
     app.add_handler(CommandHandler("forecast", forecast))
     app.add_handler(CommandHandler("stop", stop))
     app.add_handler(CommandHandler("resume", resume))
-    app.add_handler(CommandHandler("history", history))
+    app.add_handler(CommandHandler("route",route))
     app.add_handler(MessageHandler(filters.LOCATION, position))
 
     print("Bot running...")
