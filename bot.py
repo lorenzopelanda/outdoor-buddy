@@ -184,6 +184,7 @@ async def position(update: Update, context: CallbackContext) -> int:
 
 async def parse_input_with_ai(message: str) -> dict:
     try:
+        client = openai.Client()
         prompt = (
             "Extract principal parameters and optional ones to plan a cycling route from the following text. "
             "Return a JSON with address, distance, level, duration, terrain (mandatory) and ascent (optional). "
