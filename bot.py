@@ -202,6 +202,8 @@ async def parse_input_with_ai(message: str) -> dict:
                         "role": "user",
                     },
                 ], stream =False)
+            print(os.getenv("MISTRAL_API_KEY"))
+
             print(response)
 
         if not response.choices or not response.choices[0].message.content.strip():
@@ -229,24 +231,16 @@ async def route(update: Update, context: CallbackContext) -> int:
         address = params["address"]
         distance = float(params["distance"])
         level = params["level"].lower()
-        duration = float(params["duration"])
 
         if distance <= 0:
             await update.message.reply_text("❌ Distance must be greater than 0.")
-            return AWAITING_COMMAND
-
-        if duration <= 0:
-            await update.message.reply_text("❌ Duration must be greater than 0.")
             return AWAITING_COMMAND
 
         if not re.match(r"beginner|intermediate|advanced", level):
             await update.message.reply_text("❌ Level must be 'beginner', 'intermediate', or 'advanced'.")
             return AWAITING_COMMAND
 
-        ascent = params.get("ascent", None)
-
-        # Passa tutto alla funzione di pianificazione
-        utils.plan_circular_route(address, distance, level, duration=duration, ascent=ascent)
+        utils.plan_circular_route(address, distance, level)
         await update.message.reply_text("✅ Route successfully created. Check your email for the GPX file.")
     except Exception as e:
         logger.error(f"Error in route command: {e}")
