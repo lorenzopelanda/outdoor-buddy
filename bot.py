@@ -186,9 +186,8 @@ async def position(update: Update, context: CallbackContext) -> int:
 async def parse_input_with_ai(message: str) -> dict:
     try:
         prompt = (
-            "Extract principal parameters and optional ones to plan a cycling route from the following text. "
-            "Return a JSON with address, distance, level, duration, terrain (mandatory) and ascent (optional). "
-            "Ignore irrelevant details.\n"
+            "Extract the following parameters from the text: address, distance (km), level, duration (hours), and ascent (optional). "
+            "Return a JSON. Ignore irrelevant details.\n"
             f"Text: {message}\nOutput:"
         )
 
