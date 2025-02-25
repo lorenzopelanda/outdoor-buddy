@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 # URL e chiavi API
 URL = "http://api.weatherapi.com/v1"
-load_dotenv()
 TOKEN = os.getenv("TOKEN")
 API_KEY = os.getenv("API_KEY")
 openai.api_key = os.getenv("MISTRAL_API_KEY")
