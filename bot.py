@@ -192,10 +192,10 @@ async def parse_input_with_ai(message: str) -> dict:
             f"Text: {message}\nOutput:"
         )
 
-        async with Mistral(
+        with Mistral(
             api_key=os.getenv("MISTRAL_API_KEY"),
         ) as mistral:
-            response = await mistral.chat.complete(
+            response = mistral.chat.complete(
                 model="mistral-small-latest",
                 messages=[
                     {
