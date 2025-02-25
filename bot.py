@@ -206,10 +206,10 @@ async def parse_input_with_ai(message: str) -> dict:
 
             print(response)
 
-        if not response.choices or not response.choices[0].message.content.strip():
-            raise ValueError("Empty response from AI model")
+        response_text = response.choices[0].message.content.strip()
+        response_text = re.sub(r"```json\n(.*?)\n```", r"\1", response_text, flags=re.DOTALL)
 
-        return json.loads(response.choices[0].message.content)
+        return json.loads(response_text)
     except Exception as e:
         logger.error(f"Error in AI parsing: {e}")
         raise
