@@ -21,7 +21,7 @@ matplotlib==3.10.0
 meteostat==1.6.8
 networkx==3.4.2
 numpy==2.2.3
-openai==0.28.1
+openai==1.64.0
 osmnx==2.0.1
 packaging==24.2
 pandas==2.2.3
