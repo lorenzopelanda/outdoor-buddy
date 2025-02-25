@@ -202,9 +202,6 @@ async def parse_input_with_ai(message: str) -> dict:
                         "role": "user",
                     },
                 ], stream =False)
-            print(os.getenv("MISTRAL_API_KEY"))
-
-            print(response)
 
         response_text = response.choices[0].message.content.strip()
         response_text = re.sub(r"```json\n(.*?)\n```", r"\1", response_text, flags=re.DOTALL)
@@ -252,7 +249,8 @@ async def route(update: Update, context: CallbackContext) -> int:
             return AWAITING_COMMAND
 
         utils.plan_circular_route(address, distance, level)
-        await update.message.reply_text("✅ Route successfully created. Here the GPX file.")
+        await update.message.reply_text("✅ Route successfully created. Check your email for the GPX file.")
+        logger.info("Route creation completed, response sent.")
     except Exception as e:
         logger.error(f"Error in route command: {e}")
         await update.message.reply_text(f"❌ Error: {str(e)}")
