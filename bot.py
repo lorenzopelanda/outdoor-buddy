@@ -61,7 +61,7 @@ async def start(update: Update, context: CallbackContext) -> int:
 
     await update.message.reply_text(
         "Hi! Welcome to OutdoorBuddyBot\nUse:\n/weather [Municipality] -> to have the current weather\n/forecast [Municipality] -> to see next 4 days forecast"
-        "\n/history [Municipality] -> to see last 7 days temperatures\n/stop -> to pause the Bot.",
+        "\n/route [Address] [distance in km] [level of training:\n\tbeginner,intermediate,advanced] -> to have a suggested bike track for your adventutres\n/stop -> to pause the Bot.",
         reply_markup=reply_markup)
 
     return AWAITING_COMMAND
