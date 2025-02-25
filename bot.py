@@ -202,6 +202,7 @@ async def parse_input_with_ai(message: str) -> dict:
                         "role": "user",
                     },
                 ], stream =False)
+            print(response)
 
         if not response.choices or not response.choices[0].message.content.strip():
             raise ValueError("Empty response from AI model")
