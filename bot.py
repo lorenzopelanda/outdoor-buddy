@@ -195,14 +195,13 @@ async def parse_input_with_ai(message: str) -> dict:
         async with Mistral(
             api_key=os.getenv("MISTRAL_API_KEY"),
         ) as mistral:
-            response = await mistral.chat.complete_async(
-                model="mistral-small-latest",
-                messages=[
-                    {
-                        "content": prompt,
-                        "role": "user",
-                    },
-                ], stream =False)
+            response = await mistral.embeddings.create_async(
+                inputs=[
+                    prompt,
+                ], model="mistral-embed")
+
+        if not response.choices or not response.choices[0].message.content.strip():
+            raise ValueError("Empty response from AI model")
 
         return json.loads(response.choices[0].message.content)
     except Exception as e:
