@@ -221,13 +221,24 @@ async def route(update: Update, context: CallbackContext) -> int:
         return AWAITING_COMMAND
 
     try:
-        if len(update.message.text) <= len("/route "):
+        if len(update.message.text) <= len("/route"):
             await update.message.reply_text("❌ Please provide route details after the /route command.")
             return AWAITING_COMMAND
 
-        user_input = update.message.text[len("/route "):]
-        params = await parse_input_with_ai(user_input)
+        user_input = update.message.text[len("/route"):]
+        try:
+            params = await parse_input_with_ai(user_input)
+        except Exception as e:
+            logger.error(f"Error in AI parsing: {e}")
+            # Fallback a valori predefiniti
+            params = {
+                "address": "Via Vigna 10, Ciriè",
+                "distance": 50,
+                "level": "intermediate"
+            }
 
+
+        logger.info(f"Params after parsing: {params}")
         address = params["address"]
         distance = float(params["distance"])
         level = params["level"].lower()
@@ -241,7 +252,7 @@ async def route(update: Update, context: CallbackContext) -> int:
             return AWAITING_COMMAND
 
         utils.plan_circular_route(address, distance, level)
-        await update.message.reply_text("✅ Route successfully created. Check your email for the GPX file.")
+        await update.message.reply_text("✅ Route successfully created. Here the GPX file.")
     except Exception as e:
         logger.error(f"Error in route command: {e}")
         await update.message.reply_text(f"❌ Error: {str(e)}")
