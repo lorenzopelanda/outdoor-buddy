@@ -26,7 +26,7 @@ osmnx==2.0.1
 packaging==24.2
 pandas==2.2.3
 pillow==11.1.0
-psutil @ file:///croot/psutil_1736367091698/work
+psutil==5.9.5
 pydantic==2.10.6
 pydantic_core==2.27.2
 pyogrio==0.10.0
