@@ -20,7 +20,7 @@ def get_training_params(level):
         "intermediate": {"max_distance": 70_000, "max_elevation_gain": 800},
         "advanced": {"max_distance": 120_000, "max_elevation_gain": 1500},
     }
-    return levels.get(level, levels["intermedio"])
+    return levels.get(level, levels["intermediate"])
 
 
 def plan_circular_route(address, desired_distance_km, training_level, mode="bike", output_file="bike_route.gpx"):
