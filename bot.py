@@ -12,8 +12,7 @@ import re
 from dotenv import load_dotenv
 import json
 import sys
-from mistralai.client import MistralClient
-import openai
+from mistralai import Mistral
 
 
 # Configurazione del logging
@@ -31,8 +30,6 @@ logger = logging.getLogger(__name__)
 URL = "http://api.weatherapi.com/v1"
 TOKEN = os.getenv("TOKEN")
 API_KEY = os.getenv("API_KEY")
-openai.api_key = os.getenv("MISTRAL_API_KEY")
-openai.api_base = "https://api.mistral.ai/v1"  # Specifica l'URL base dell'API di Mistral
 
 
 # Stato della conversazione
@@ -195,11 +192,17 @@ async def parse_input_with_ai(message: str) -> dict:
             f"Text: {message}\nOutput:"
         )
 
-        response = openai.ChatCompletion.create(
-            model="mistral-medium",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2
-        )
+        with Mistral(
+            api_key=os.getenv("MISTRAL_API_KEY"),
+        ) as mistral:
+            response = mistral.chat.complete(
+                model="mistral-small-latest",
+                messages=[
+                    {
+                        "content": prompt,
+                        "role": "user",
+                    },
+                ], stream =False)
 
         return json.loads(response.choices[0].message.content)
     except Exception as e:
