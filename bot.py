@@ -293,7 +293,6 @@ async def run_route_planner_process(address, distance, level, output_file):
         route_script = """import json
 import sys
 import logging
-from utils import plan_circular_route
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from processing.utils import plan_circular_route
