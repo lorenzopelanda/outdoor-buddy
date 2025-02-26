@@ -290,12 +290,15 @@ async def run_route_planner_process(address, distance, level, output_file):
             }, f)
 
         # Create a separate Python script that will handle the route planning
+        current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         route_script = """import json
-import os
 import sys
 import logging
+import os
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add the project root to Python path
+sys.path.insert(0, '{}')
+
 from processing.utils import plan_circular_route
 
 logging.basicConfig(
@@ -308,7 +311,7 @@ def main():
     try:
         with open(sys.argv[1], 'r') as f:
             params = json.load(f)
-
+        
         plan_circular_route(
             params["address"], 
             params["distance"], 
@@ -317,11 +320,11 @@ def main():
         )
         return 0
     except Exception as e:
-        logger.error(f"Route planning failed: {e}")
+        logger.error(f"Route planning failed: {{e}}")
         return 1
 
 if __name__ == "__main__":
-    sys.exit(main())"""
+    sys.exit(main())""".format(current_dir)
 
         # Write the script to a temporary file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
