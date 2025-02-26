@@ -289,51 +289,17 @@ async def run_route_planner_process(address, distance, level, output_file):
                 "output_file": output_file
             }, f)
 
-        # Create a separate Python script that will handle the route planning
-        current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        route_script = """import json
-import sys
-import logging
-import os
+        # Get the path to the dedicated route planner script
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'route_planner_process.py')
 
-# Add the project root to Python path
-sys.path.insert(0, '{}')
-
-from processing.utils import plan_circular_route
-
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger("route_planner")
-
-def main():
-    try:
-        with open(sys.argv[1], 'r') as f:
-            params = json.load(f)
-        
-        plan_circular_route(
-            params["address"], 
-            params["distance"], 
-            params["level"],
-            output_file=params["output_file"]
-        )
-        return 0
-    except Exception as e:
-        logger.error(f"Route planning failed: {{e}}")
-        return 1
-
-if __name__ == "__main__":
-    sys.exit(main())""".format(current_dir)
-
-        # Write the script to a temporary file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-            script_file = f.name
-            f.write(route_script)
+        # Make sure the script exists
+        if not os.path.exists(script_path):
+            logger.error(f"Route planner script not found at: {script_path}")
+            return False
 
         # Run the script with timeout
         process = await asyncio.create_subprocess_exec(
-            sys.executable, script_file, params_file,
+            sys.executable, script_path, params_file,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -344,9 +310,13 @@ if __name__ == "__main__":
 
             if process.returncode != 0:
                 logger.error(f"Route planning process failed with return code {process.returncode}")
-                logger.error(f"STDERR: {stderr.decode()}")
+                if stderr:
+                    logger.error(f"STDERR: {stderr.decode()}")
+                if stdout:
+                    logger.info(f"STDOUT: {stdout.decode()}")
                 return False
 
+            logger.info("Route planning process completed successfully")
             return True
         except asyncio.TimeoutError:
             logger.error("Route planning process timed out after 5 minutes")
@@ -359,7 +329,6 @@ if __name__ == "__main__":
         # Clean up temporary files
         try:
             os.unlink(params_file)
-            os.unlink(script_file)
         except Exception:
             pass
 
