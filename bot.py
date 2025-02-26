@@ -2,6 +2,7 @@ from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackContext, \
     ConversationHandler, PersistenceInput, PicklePersistence
 from processing import utils
+from concurrent.futures import ProcessPoolExecutor
 import requests
 import os
 import signal
@@ -217,58 +218,52 @@ async def route(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text("🛑 Bot is paused. Use /resume to continue.")
         return AWAITING_COMMAND
 
-    try:
-        if len(update.message.text) <= len("/route"):
-            await update.message.reply_text("❌ Please provide route details after the /route command.")
-            return AWAITING_COMMAND
-
-        user_input = update.message.text[len("/route"):]
-        try:
-            params = await parse_input_with_ai(user_input)
-        except Exception as e:
-            logger.error(f"Error in AI parsing: {e}")
-            # Fallback a valori predefiniti
-            params = {
-                "address": "Via Vigna 10, Ciriè",
-                "distance": 50,
-                "level": "intermediate"
-            }
-
-
-        logger.info(f"Params after parsing: {params}")
-        address = params["address"]
-        distance = float(params["distance"])
-        level = params["level"].lower()
-
-        if distance <= 0:
-            await update.message.reply_text("❌ Distance must be greater than 0.")
-            return AWAITING_COMMAND
-
-        if not re.match(r"beginner|intermediate|advanced", level):
-            await update.message.reply_text("❌ Level must be 'beginner', 'intermediate', or 'advanced'.")
-            return AWAITING_COMMAND
-
-        await update.message.reply_text(
-            "🔄 Processing your route request. This may take a few minutes. I'll notify you when it's ready.")
-
-        # Start route planning in a background task
-        asyncio.create_task(process_route_in_background(update, address, distance, level))
-
+    if len(update.message.text) <= len("/route"):
+        await update.message.reply_text("❌ Please provide route details after the /route command.")
         return AWAITING_COMMAND
+
+    user_input = update.message.text[len("/route"):]
+    try:
+        params = await parse_input_with_ai(user_input)
     except Exception as e:
-        logger.error(f"Error in route command: {e}")
-        await update.message.reply_text(f"❌ Error: {str(e)}")
+        logger.error(f"Error in AI parsing: {e}")
+        # Fallback a valori predefiniti
+        params = {
+            "address": "Via Vigna 10, Ciriè",
+            "distance": 50,
+            "level": "intermediate"
+        }
+
+    logger.info(f"Params after parsing: {params}")
+    address = params["address"]
+    distance = float(params["distance"])
+    level = params["level"].lower()
+
+    if distance <= 0:
+        await update.message.reply_text("❌ Distance must be greater than 0.")
+        return AWAITING_COMMAND
+
+    if not re.match(r"beginner|intermediate|advanced", level):
+        await update.message.reply_text("❌ Level must be 'beginner', 'intermediate', or 'advanced'.")
+        return AWAITING_COMMAND
+
+    await update.message.reply_text("🔄 Processing your route request. This may take a few minutes.")
+
+    loop = asyncio.get_event_loop()
+    with ProcessPoolExecutor() as pool:
+        try:
+            await loop.run_in_executor(
+                pool,
+                utils.plan_circular_route,
+                address, distance, level
+            )
+            await update.message.reply_text("✅ Route successfully created. Check your email for the GPX file.")
+        except Exception as e:
+            logger.error(f"Error in route command: {e}")
+            await update.message.reply_text(f"❌ Error: {str(e)}")
 
     return AWAITING_COMMAND
 
-async def process_route_in_background(update, address, distance, level):
-    try:
-        utils.plan_circular_route(address, distance, level)
-        await update.message.reply_text("✅ Route successfully created. Check your email for the GPX file.")
-        logger.info("Route creation completed, response sent.")
-    except Exception as e:
-        logger.error(f"Error in route processing: {e}")
-        await update.message.reply_text(f"❌ Error creating route: {str(e)}")
 
 async def error_handler(update: Update, context: CallbackContext) -> None:
     """Gestisce gli errori incontrati dal dispatcher."""
