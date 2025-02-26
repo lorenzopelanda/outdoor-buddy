@@ -291,6 +291,7 @@ async def run_route_planner_process(address, distance, level, output_file):
 
         # Create a separate Python script that will handle the route planning
         route_script = """import json
+import os
 import sys
 import logging
 
