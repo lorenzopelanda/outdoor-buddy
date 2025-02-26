@@ -290,37 +290,35 @@ async def run_route_planner_process(address, distance, level, output_file):
             }, f)
 
         # Create a separate Python script that will handle the route planning
-        route_script = """
-        import json
-        import sys
-        import logging
-        from utils import plan_circular_route
+        route_script = """import json
+import sys
+import logging
+from utils import plan_circular_route
 
-        logging.basicConfig(
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            level=logging.INFO
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger("route_planner")
+
+def main():
+    try:
+        with open(sys.argv[1], 'r') as f:
+            params = json.load(f)
+
+        plan_circular_route(
+            params["address"], 
+            params["distance"], 
+            params["level"],
+            output_file=params["output_file"]
         )
-        logger = logging.getLogger("route_planner")
+        return 0
+    except Exception as e:
+        logger.error(f"Route planning failed: {e}")
+        return 1
 
-        def main():
-            try:
-                with open(sys.argv[1], 'r') as f:
-                    params = json.load(f)
-
-                plan_circular_route(
-                    params["address"], 
-                    params["distance"], 
-                    params["level"],
-                    output_file=params["output_file"]
-                )
-                return 0
-            except Exception as e:
-                logger.error(f"Route planning failed: {e}")
-                return 1
-
-        if __name__ == "__main__":
-            sys.exit(main())
-        """
+if __name__ == "__main__":
+    sys.exit(main())"""
 
         # Write the script to a temporary file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
