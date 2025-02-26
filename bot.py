@@ -1,7 +1,7 @@
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackContext, \
     ConversationHandler, PersistenceInput, PicklePersistence
-from processing import utils
+from processing.utils import plan_circular_route
 import requests
 import os
 import signal
@@ -248,7 +248,7 @@ async def route(update: Update, context: CallbackContext) -> int:
             await update.message.reply_text("❌ Level must be 'beginner', 'intermediate', or 'advanced'.")
             return AWAITING_COMMAND
 
-        utils.plan_circular_route(address, distance, level)
+        plan_circular_route(address, distance, level)
         await update.message.reply_text("✅ Route successfully created. Check your email for the GPX file.")
         logger.info("Route creation completed, response sent.")
     except Exception as e:
