@@ -4,7 +4,7 @@ import sys
 import logging
 import os
 import traceback
-import scikit_learn
+import sklearn
 import gc  # Garbage collection
 
 # Configure logging
