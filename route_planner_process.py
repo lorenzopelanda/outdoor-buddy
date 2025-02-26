@@ -4,6 +4,7 @@ import sys
 import logging
 import os
 import traceback
+import scikit_learn
 import gc  # Garbage collection
 
 # Configure logging
@@ -87,8 +88,6 @@ def main():
                         continue
 
                     try:
-                        logger.info(f"Number of nodes: {len(G.nodes())}, Number of edges: {len(G.edges())}")
-                        logger.info(f"Start node: {start_node}")
 
                         # Find route to target
                         route_to = nx.shortest_path(G, start_node, target_node, weight="length")

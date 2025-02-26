@@ -3,6 +3,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
     ConversationHandler, PersistenceInput, PicklePersistence
 from processing import utils
 from concurrent.futures import ProcessPoolExecutor
+import scikit_learn
 import requests
 import os
 import signal

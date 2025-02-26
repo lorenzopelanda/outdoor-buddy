@@ -38,6 +38,7 @@ python-dotenv==1.0.1
 python-telegram-bot==21.10
 pytz==2025.1
 requests==2.32.3
+scikit-learn==1.6.1
 setuptools==75.8.0
 shapely==2.0.7
 six==1.17.0
