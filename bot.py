@@ -295,6 +295,9 @@ import sys
 import logging
 from utils import plan_circular_route
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from processing.utils import plan_circular_route
+
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
