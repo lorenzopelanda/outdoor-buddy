@@ -297,16 +297,22 @@ async def run_route_planner_process(address, distance, level, output_file):
             logger.error(f"Route planner script not found at: {script_path}")
             return False
 
+        # Run the script with timeout and increased memory limit
+        env = os.environ.copy()
+        # Increase Python memory limit if your system supports it
+        env["PYTHONMALLOC"] = "malloc"  # Use system malloc which might be more efficient
+
         # Run the script with timeout
         process = await asyncio.create_subprocess_exec(
             sys.executable, script_path, params_file,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.PIPE,
+            env=env
         )
 
         try:
-            # Set a timeout (e.g., 5 minutes)
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)
+            # Set a longer timeout (10 minutes)
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=600)
 
             if process.returncode != 0:
                 logger.error(f"Route planning process failed with return code {process.returncode}")
@@ -319,7 +325,7 @@ async def run_route_planner_process(address, distance, level, output_file):
             logger.info("Route planning process completed successfully")
             return True
         except asyncio.TimeoutError:
-            logger.error("Route planning process timed out after 5 minutes")
+            logger.error("Route planning process timed out after 10 minutes")
             process.kill()
             return False
     except Exception as e:
