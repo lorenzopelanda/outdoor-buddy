@@ -57,7 +57,9 @@ def main():
         import random
 
         # Configure OSMnx to use less memory
-        ox.config(use_cache=True, log_console=True, log_file=True)
+        ox.settings.use_cache=True
+        ox.settings.log_console=True
+        ox.settings.log_file = True
 
         # Download the graph with a smaller search radius first
         logger.info("Downloading initial graph with smaller radius...")
