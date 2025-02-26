@@ -1,7 +1,7 @@
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackContext, \
     ConversationHandler, PersistenceInput, PicklePersistence
-from processing.utils import plan_circular_route
+from processing import utils
 import requests
 import os
 import signal
@@ -248,15 +248,27 @@ async def route(update: Update, context: CallbackContext) -> int:
             await update.message.reply_text("❌ Level must be 'beginner', 'intermediate', or 'advanced'.")
             return AWAITING_COMMAND
 
-        plan_circular_route(address, distance, level)
-        await update.message.reply_text("✅ Route successfully created. Check your email for the GPX file.")
-        logger.info("Route creation completed, response sent.")
+        await update.message.reply_text(
+            "🔄 Processing your route request. This may take a few minutes. I'll notify you when it's ready.")
+
+        # Start route planning in a background task
+        asyncio.create_task(process_route_in_background(update, address, distance, level))
+
+        return AWAITING_COMMAND
     except Exception as e:
         logger.error(f"Error in route command: {e}")
         await update.message.reply_text(f"❌ Error: {str(e)}")
 
     return AWAITING_COMMAND
 
+async def process_route_in_background(update, address, distance, level):
+    try:
+        utils.plan_circular_route(address, distance, level)
+        await update.message.reply_text("✅ Route successfully created. Check your email for the GPX file.")
+        logger.info("Route creation completed, response sent.")
+    except Exception as e:
+        logger.error(f"Error in route processing: {e}")
+        await update.message.reply_text(f"❌ Error creating route: {str(e)}")
 
 async def error_handler(update: Update, context: CallbackContext) -> None:
     """Gestisce gli errori incontrati dal dispatcher."""
