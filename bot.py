@@ -13,6 +13,7 @@ import re
 from dotenv import load_dotenv
 import json
 import sys
+import tempfile
 from mistralai import Mistral
 
 
@@ -218,52 +219,145 @@ async def route(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text("🛑 Bot is paused. Use /resume to continue.")
         return AWAITING_COMMAND
 
-    if len(update.message.text) <= len("/route"):
-        await update.message.reply_text("❌ Please provide route details after the /route command.")
-        return AWAITING_COMMAND
-
-    user_input = update.message.text[len("/route"):]
     try:
-        params = await parse_input_with_ai(user_input)
-    except Exception as e:
-        logger.error(f"Error in AI parsing: {e}")
-        # Fallback a valori predefiniti
-        params = {
-            "address": "Via Vigna 10, Ciriè",
-            "distance": 50,
-            "level": "intermediate"
-        }
+        if len(update.message.text) <= len("/route"):
+            await update.message.reply_text("❌ Please provide route details after the /route command.")
+            return AWAITING_COMMAND
 
-    logger.info(f"Params after parsing: {params}")
-    address = params["address"]
-    distance = float(params["distance"])
-    level = params["level"].lower()
-
-    if distance <= 0:
-        await update.message.reply_text("❌ Distance must be greater than 0.")
-        return AWAITING_COMMAND
-
-    if not re.match(r"beginner|intermediate|advanced", level):
-        await update.message.reply_text("❌ Level must be 'beginner', 'intermediate', or 'advanced'.")
-        return AWAITING_COMMAND
-
-    await update.message.reply_text("🔄 Processing your route request. This may take a few minutes.")
-
-    loop = asyncio.get_event_loop()
-    with ProcessPoolExecutor() as pool:
+        user_input = update.message.text[len("/route"):]
         try:
-            await loop.run_in_executor(
-                pool,
-                utils.plan_circular_route,
-                address, distance, level
-            )
-            await update.message.reply_text("✅ Route successfully created. Check your email for the GPX file.")
+            params = await parse_input_with_ai(user_input)
         except Exception as e:
-            logger.error(f"Error in route command: {e}")
-            await update.message.reply_text(f"❌ Error: {str(e)}")
+            logger.error(f"Error in AI parsing: {e}")
+            # Fallback to default values
+            params = {
+                "address": "Via Vigna 10, Ciriè",
+                "distance": 50,
+                "level": "intermediate"
+            }
+
+        logger.info(f"Params after parsing: {params}")
+        address = params["address"]
+        distance = float(params["distance"])
+        level = params["level"].lower()
+
+        if distance <= 0:
+            await update.message.reply_text("❌ Distance must be greater than 0.")
+            return AWAITING_COMMAND
+
+        if not re.match(r"beginner|intermediate|advanced", level):
+            await update.message.reply_text("❌ Level must be 'beginner', 'intermediate', or 'advanced'.")
+            return AWAITING_COMMAND
+
+        # Tell the user we're processing
+        message = await update.message.reply_text("🔄 Processing your route request. This may take a few minutes...")
+
+        # Create a unique ID for this route request
+        route_id = f"route_{update.effective_user.id}_{int(asyncio.get_event_loop().time())}"
+        output_file = f"{route_id}.gpx"
+
+        # Run the route planner in a separate Python process
+        success = await run_route_planner_process(address, distance, level, output_file)
+
+        if success:
+            # Update the message to indicate success
+            await message.edit_text("✅ Route successfully created. Check your email for the GPX file.")
+
+            # Here you would add code to email the GPX file to the user
+            # send_email_with_attachment(user_email, output_file)
+
+            logger.info("Route creation completed, response sent.")
+        else:
+            await message.edit_text("❌ Failed to create route. Please try again with different parameters.")
+    except Exception as e:
+        logger.error(f"Error in route command: {e}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
 
     return AWAITING_COMMAND
 
+
+async def run_route_planner_process(address, distance, level, output_file):
+    """Run the route planner in a separate process with timeout"""
+    try:
+        # Create a temporary JSON file to pass parameters
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            params_file = f.name
+            json.dump({
+                "address": address,
+                "distance": distance,
+                "level": level,
+                "output_file": output_file
+            }, f)
+
+        # Create a separate Python script that will handle the route planning
+        route_script = """
+        import json
+        import sys
+        import logging
+        from utils import plan_circular_route
+
+        logging.basicConfig(
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            level=logging.INFO
+        )
+        logger = logging.getLogger("route_planner")
+
+        def main():
+            try:
+                with open(sys.argv[1], 'r') as f:
+                    params = json.load(f)
+
+                plan_circular_route(
+                    params["address"], 
+                    params["distance"], 
+                    params["level"],
+                    output_file=params["output_file"]
+                )
+                return 0
+            except Exception as e:
+                logger.error(f"Route planning failed: {e}")
+                return 1
+
+        if __name__ == "__main__":
+            sys.exit(main())
+        """
+
+        # Write the script to a temporary file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            script_file = f.name
+            f.write(route_script)
+
+        # Run the script with timeout
+        process = await asyncio.create_subprocess_exec(
+            sys.executable, script_file, params_file,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        try:
+            # Set a timeout (e.g., 5 minutes)
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)
+
+            if process.returncode != 0:
+                logger.error(f"Route planning process failed with return code {process.returncode}")
+                logger.error(f"STDERR: {stderr.decode()}")
+                return False
+
+            return True
+        except asyncio.TimeoutError:
+            logger.error("Route planning process timed out after 5 minutes")
+            process.kill()
+            return False
+    except Exception as e:
+        logger.error(f"Failed to run route planner: {e}")
+        return False
+    finally:
+        # Clean up temporary files
+        try:
+            os.unlink(params_file)
+            os.unlink(script_file)
+        except Exception:
+            pass
 
 async def error_handler(update: Update, context: CallbackContext) -> None:
     """Gestisce gli errori incontrati dal dispatcher."""
